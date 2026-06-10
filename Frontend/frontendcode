@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>YouTube AI Explorer</title>
+
+<style>
+body {
+    font-family: Arial, sans-serif;
+    background: #0f172a;
+    color: white;
+    margin: 20px;
+}
+
+h1 {
+    text-align: center;
+}
+
+/* Tabs */
+.tabs {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    margin-bottom: 20px;
+}
+
+.tab-button {
+    padding: 10px 20px;
+    border: none;
+    border-radius: 6px;
+    background: #475569;
+    color: white;
+    cursor: pointer;
+    font-weight: bold;
+}
+
+.tab-button.active {
+    background: #6366f1;
+}
+
+.tab-content {
+    display: none;
+    background: #111827;
+    padding: 20px;
+    border-radius: 10px;
+}
+
+input {
+    padding: 8px;
+    border-radius: 5px;
+    border: none;
+    width: 260px;
+}
+
+button {
+    padding: 8px 16px;
+    border-radius: 5px;
+    border: none;
+    background: #6366f1;
+    color: white;
+    cursor: pointer;
+    font-weight: bold;
+}
+
+button.loading {
+    background: #020617;
+    cursor: not-allowed;
+}
+
+/* Status text */
+.status {
+    margin-top: 10px;
+    font-weight: bold;
+}
+.status.loading { color: #facc15; }
+.status.success { color: #22c55e; }
+.status.error { color: #ef4444; }
+
+/* SEARCH CARD UI */
+.card {
+    display: flex;
+    gap: 15px;
+    background: #1e293b;
+    padding: 15px;
+    border-radius: 10px;
+    margin-top: 15px;
+}
+
+.card img {
+    width: 160px;
+    border-radius: 8px;
+    cursor: pointer;
+}
+
+.card h3 {
+    margin: 0;
+}
+
+.card a {
+    color: #93c5fd;
+    text-decoration: none;
+}
+
+.card a:hover {
+    text-decoration: underline;
+}
+</style>
+</head>
+
+<body>
+
+<h1>📺 YouTube AI Explorer</h1>
+
+<!-- TABS -->
+<div class="tabs">
+    <button class="tab-button" onclick="showTab('ingest')">INGEST</button>
+    <button class="tab-button" onclick="showTab('search')">SEARCH</button>
+    <button class="tab-button" onclick="showTab('summary')">SUMMARY</button>
+</div>
+
+<!-- INGEST -->
+<div id="ingest" class="tab-content">
+    <h2>Ingest CSV</h2>
+    <input type="file" id="csvFile"><br><br>
+    <button onclick="uploadIngest(event)">Upload & Ingest</button>
+    <p id="ingestMessage" class="status"></p>
+</div>
+
+<!-- SEARCH -->
+<div id="search" class="tab-content">
+    <h2>Search Videos</h2>
+    <input type="text" id="searchQuery" placeholder="Enter search query">
+    <button onclick="searchVideos(event)">Search</button>
+
+    <div id="searchCards"></div>
+</div>
+
+<!-- SUMMARY -->
+<div id="summary" class="tab-content">
+    <h2>Generate Summary</h2>
+    <input type="text" id="summaryVideoId" placeholder="Enter Video ID">
+    <button onclick="getSummary(event)">Generate Summary</button>
+    <p id="summaryResult" class="status"></p>
+</div>
+
+<script>
+const BASE_URL = "http://127.0.0.1:8000";
+
+/* TAB CONTROL */
+function showTab(tab) {
+    document.querySelectorAll(".tab-content").forEach(t => t.style.display = "none");
+    document.getElementById(tab).style.display = "block";
+
+    document.querySelectorAll(".tab-button").forEach(b => b.classList.remove("active"));
+    document.querySelector(`button[onclick="showTab('${tab}')"]`).classList.add("active");
+}
+showTab("ingest");
+
+/* INGEST */
+async function uploadIngest(e) {
+    const btn = e.target;
+    const msg = document.getElementById("ingestMessage");
+    const file = document.getElementById("csvFile").files[0];
+
+    if (!file) {
+        alert("Select CSV file");
+        return;
+    }
+
+    btn.classList.add("loading");
+    btn.innerText = "Ingesting...";
+    msg.className = "status loading";
+    msg.innerText = "Processing CSV...";
+
+    try {
+        const fd = new FormData();
+        fd.append("file", file);
+
+        const res = await fetch(`${BASE_URL}/ingest`, {
+            method: "POST",
+            body: fd
+        });
+
+        const data = await res.json();
+        msg.className = "status success";
+        msg.innerText = `✅ ${data.message}`;
+    } catch {
+        msg.className = "status error";
+        msg.innerText = "❌ Ingest failed";
+    }
+
+    btn.classList.remove("loading");
+    btn.innerText = "Upload & Ingest";
+}
+
+/* SEARCH */
+
+async function searchVideos(e) {
+    const btn = e.target;
+    const query = document.getElementById("searchQuery").value;
+    const container = document.getElementById("searchCards");
+
+    if (!query) {
+        alert("Enter search query");
+        return;
+    }
+
+    btn.classList.add("loading");
+    btn.innerText = "Searching...";
+    container.innerHTML = "Searching...";
+
+    try {
+        const res = await fetch(
+            `${BASE_URL}/search?query=${encodeURIComponent(query)}&k=5`
+        );
+        const data = await res.json();
+
+        container.innerHTML = "";
+
+        data.results.forEach((v, i) => {
+            const ytUrl = `https://www.youtube.com/watch?v=${v.video_id}`;
+
+            container.innerHTML += `
+                <div class="card">
+                    <a href="${ytUrl}" target="_blank">
+                        <img src="${v.thumbnail}" />
+                    </a>
+                    <div>
+                        <h3>${i + 1}. 
+                            <a href="${ytUrl}" target="_blank">${v.title}</a>
+                        </h3>
+                        <p><b>Channel:</b> ${v.channel_title}</p>
+                        <p><b>Video ID:</b> ${v.video_id}</p>
+                        <p><b>Views:</b> ${v.viewCount}</p>
+                        <p><b>Duration:</b> ${v.duration}</p>
+                        <p><b>Similarity:</b> ${v.similarity.toFixed(3)}</p>
+                    </div>
+                </div>
+            `;
+        });
+    } catch (err) {
+        console.error(err);
+        container.innerHTML = "❌ Search failed";
+    }
+
+    btn.classList.remove("loading");
+    btn.innerText = "Search";
+}
+
+
+/* SUMMARY */
+async function getSummary(e) {
+    const btn = e.target;
+    const videoId = document.getElementById("summaryVideoId").value;
+    const out = document.getElementById("summaryResult");
+
+    if (!videoId) {
+        alert("Enter Video ID");
+        return;
+    }
+
+    btn.classList.add("loading");
+    btn.innerText = "Generating...";
+    out.className = "status loading";
+    out.innerText = "Generating summary...";
+
+    try {
+        const res = await fetch(`${BASE_URL}/summarize/${videoId}`);
+        const data = await res.json();
+
+        out.className = "status success";
+        out.innerText = `📌 Video ID: ${data.video_id}\n\n${data.summary}`;
+    } catch {
+        out.className = "status error";
+        out.innerText = "❌ Summary failed";
+    }
+
+    btn.classList.remove("loading");
+    btn.innerText = "Generate Summary";
+}
+</script>
+
+</body>
+</html>
